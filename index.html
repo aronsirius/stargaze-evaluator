@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>观星适宜度评估器 · 天狼星出品</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --bg2:#111827; --card:#161e2e; --line:#26304a;
+    --txt:#e6ecff; --sub:#9fb0d0; --accent:#7aa2ff; --good:#4ade80;
+    --mid:#facc15; --bad:#f87171; --star:#cfe0ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#1b2746 0%,var(--bg) 55%);
+    color:var(--txt);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.6}
+  .wrap{max-width:920px;margin:0 auto;padding:28px 18px 60px}
+  header h1{font-size:24px;margin:0 0 4px;letter-spacing:1px}
+  header p{margin:0;color:var(--sub);font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  label{display:block;font-size:12px;color:var(--sub);margin:10px 0 4px}
+  input[type=number],input[type=text]{width:100%;background:var(--bg2);border:1px solid var(--line);
+    color:var(--txt);border-radius:9px;padding:9px 11px;font-size:14px}
+  input:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:10px}
+  .row>div{flex:1}
+  button{margin-top:14px;width:100%;background:linear-gradient(180deg,#7aa2ff,#5b82f0);
+    color:#06122e;border:none;border-radius:10px;padding:11px;font-size:15px;font-weight:700;
+    cursor:pointer;letter-spacing:1px}
+  button:active{transform:translateY(1px)}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--sub);font-weight:500}
+  .slabel{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-top:12px}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .saved{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}
+  .saved h3{font-size:12px;color:var(--sub);margin:0 0 8px;font-weight:500}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--line);
+    border-radius:20px;padding:5px 10px;margin:0 6px 6px 0;font-size:12px;cursor:pointer}
+  .chip b{color:var(--accent)}
+  .chip .x{color:var(--bad);font-weight:700}
+  /* result */
+  #result{display:none}
+  .score{text-align:center;padding:8px 0 4px}
+  .score .num{font-size:64px;font-weight:800;line-height:1}
+  .score .cat{font-size:18px;font-weight:700;margin-top:6px}
+  .score .best{color:var(--sub);font-size:13px;margin-top:4px}
+  .factors{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:560px){.factors{grid-template-columns:1fr}}
+  .factor{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .factor .top{display:flex;justify-content:space-between;font-size:13px}
+  .factor .val{color:var(--sub);font-size:12px}
+  .bar{height:7px;background:#0c1322;border-radius:5px;margin-top:8px;overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:5px}
+  .reasons{margin-top:14px}
+  .reasons h3{font-size:13px;color:var(--sub);font-weight:500;margin:0 0 6px}
+  .reasons li{font-size:13px;margin:3px 0;color:var(--star)}
+  .err{color:var(--bad);font-size:13px;margin-top:10px}
+  .note{font-size:11px;color:#6f7ea3;margin-top:10px;line-height:1.5}
+  .stars{position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.5}
+</style>
+</head>
+<body>
+<canvas class="stars" id="stars"></canvas>
+<div class="wrap">
+  <header>
+    <h1>✦ 观星适宜度评估器</h1>
+    <p>天狼星为你打造 · 输入坐标，算今晚适不适合拍星 · 数据来自 Open-Meteo（免费、无需密钥）</p>
+  </header>
+
+  <div class="grid">
+    <!-- 输入区 -->
+    <section class="card">
+      <div class="row">
+        <div><label>纬度 Latitude</label><input id="lat" type="number" step="0.0001" value="40.4319" /></div>
+        <div><label>经度 Longitude</label><input id="lon" type="number" step="0.0001" value="116.3869" /></div>
+      </div>
+      <label>地点名称（可选，用于保存）</label>
+      <input id="locName" type="text" placeholder="如：金山岭长城" />
+
+      <div class="slabel"><span>光污染 Bortle 等级</span><span id="bortleVal">4（郊外天空）</span></div>
+      <input id="bortle" type="range" min="1" max="9" step="1" value="4" />
+      <div class="note">Bortle 1=最黑（偏远荒野），9=市中心。不会查就先留 4，以后我帮你接自动查询。</div>
+
+      <div class="slabel"><span>视宁度 Seeing（可选，角秒）</span><span id="seeingVal">自动估算</span></div>
+      <input id="seeing" type="range" min="0" max="8" step="0.5" value="0" />
+      <div class="note">留 0 = 不计入评分（免费实时视宁度数据少）。知道就填：1″极佳，3″良好，>5″差。</div>
+
+      <button id="go">评 估 今 晚</button>
+      <button id="save" class="ghost">＋ 保存当前地点</button>
+
+      <div class="saved">
+        <h3>已保存地点（点一下直接评估）</h3>
+        <div id="chips"></div>
+      </div>
+    </section>
+
+    <!-- 结果区 -->
+    <section class="card" id="result">
+      <div class="score">
+        <div class="num" id="scoreNum">--</div>
+        <div class="cat" id="scoreCat">—</div>
+        <div class="best" id="scoreBest"></div>
+      </div>
+      <div class="factors" id="factors"></div>
+      <div class="reasons">
+        <h3>关键提示</h3>
+        <ul id="reasons"></ul>
+      </div>
+      <div class="note" id="meta"></div>
+    </section>
+  </div>
+
+  <p class="note">
+    评分逻辑（可改）：云量45% · 降水15% · 湿度15% · 风速10% · 月光10% · 光污染5%（填入视宁度时再分10%给它）。
+    各项 0–100 分加权得出总分，>=75非常适合 / 60–74适合 / 45–59一般 / <45不适合。
+    月光项按"拍银河"标准算（满月会压暗银河）；若你拍行星/月亮可忽略该项。
+  </p>
+</div>
+
+<script>
+// ---------- 背景星点 ----------
+(function(){
+  const c=document.getElementById('stars'),x=c.getContext('2d');
+  function rs(){c.width=innerWidth;c.height=innerHeight;draw();}
+  function draw(){
+    x.clearRect(0,0,c.width,c.height);
+    for(let i=0;i<140;i++){
+      const r=Math.random()*1.4+.2, a=Math.random()*.7+.2;
+      x.fillStyle='rgba(207,224,255,'+a+')';
+      x.beginPath();x.arc(Math.random()*c.width,Math.random()*c.height,r,0,7);x.fill();
+    }
+  }
+  addEventListener('resize',rs);rs();
+})();
+
+// ---------- 保存地点 ----------
+const KEY='stargaze_spots';
+function loadSpots(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+function saveSpots(a){localStorage.setItem(KEY,JSON.stringify(a))}
+function renderChips(){
+  const box=document.getElementById('chips');box.innerHTML='';
+  loadSpots().forEach((s,i)=>{
+    const el=document.createElement('span');el.className='chip';
+    el.innerHTML='<b>'+s.name+'</b> '+s.lat+','+s.lon+' <span class="x" data-i="'+i+'">✕</span>';
+    el.onclick=(e)=>{if(e.target.dataset.i!==undefined)return;
+      document.getElementById('lat').value=s.lat;document.getElementById('lon').value=s.lon;
+      document.getElementById('locName').value=s.name;evaluate();};
+    el.querySelector('.x').onclick=(e)=>{e.stopPropagation();
+      const a=loadSpots();a.splice(i,1);saveSpots(a);renderChips();};
+    box.appendChild(el);
+  });
+}
+renderChips();
+document.getElementById('save').onclick=()=>{
+  const name=document.getElementById('locName').value.trim()||'未命名';
+  const lat=+document.getElementById('lat').value, lon=+document.getElementById('lon').value;
+  if(!lat||!lon){alert('先填经纬度');return;}
+  const a=loadSpots();a.push({name,lat,lon});saveSpots(a);renderChips();
+};
+
+// ---------- 评分函数 ----------
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fCloud =c=>clamp(100-c,0,100);
+const fPrecip=p=>clamp(100-p,0,100);
+const fHum   =h=>h<=60?100:clamp(100-(h-60)*2,0,100);
+const fWind  =w=>w<=10?100:clamp(100-(w-10)*3,0,100);
+const fMoon  =m=>clamp(100-m*70,0,100);            // m: 0~1
+const fBortle=b=>clamp(100-(b-1)*11,0,100);
+const fSeeing=s=>clamp(100-(s-1)*15,0,100);        // s: 角秒
+
+// ---------- 主流程 ----------
+async function evaluate(){
+  const lat=+document.getElementById('lat').value, lon=+document.getElementById('lon').value;
+  if(!lat||!lon){alert('经纬度不能为空');return;}
+  const bortle=+document.getElementById('bortle').value;
+  const seeing=+document.getElementById('seeing').value;
+  const R=document.getElementById('result');R.style.display='none';
+  const meta=document.getElementById('meta');meta.textContent='查询中…';
+
+  try{
+    const wx=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
+      `&hourly=cloud_cover,relative_humidity_2m,wind_speed_10m,precipitation_probability,temperature_2m`+
+      `&forecast_days=2&timezone=auto`;
+    const as=`https://api.open-meteo.com/v1/astronomy?latitude=${lat}&longitude=${lon}`+
+      `&daily=sunrise_astronomical,sunset_astronomical,sunrise,sunset,moon_illumination,moon_phase`+
+      `&forecast_days=2&timezone=auto`;
+    const [w,j]=await Promise.all([fetch(wx).then(r=>r.json()),fetch(as).then(r=>r.json())]);
+
+    // 黑夜窗口：今晚日落天文时刻 ~ 明早日出天文时刻
+    const setA=new Date(j.daily.sunset_astronomical[0]);
+    const riseA=new Date(j.daily.sunrise_astronomical[1]);
+    const tArr=w.hourly.time.map(t=>new Date(t));
+    let sum={cloud:0,precip:0,hum:0,wind:0,temp:0,n:0};
+    let best={score:-1,time:null};
+    for(let i=0;i<tArr.length;i++){
+      if(tArr[i]>=setA && tArr[i]<=riseA){
+        const c=w.hourly.cloud_cover[i],p=w.hourly.precipitation_probability[i],
+              h=w.hourly.relative_humidity_2m[i],wd=w.hourly.wind_speed_10m[i],tp=w.hourly.temperature_2m[i];
+        sum.cloud+=c;sum.precip+=p;sum.hum+=h;sum.wind+=wd;sum.temp+=tp;sum.n++;
+        const sc=(fCloud(c)+fPrecip(p)+fHum(h)+fWind(wd))/4;
+        if(sc>best.score){best.score=sc;best.time=tArr[i];}
+      }
+    }
+    if(sum.n===0){meta.textContent='今夜无天文黑夜时段（高纬度夏季可能极昼），试试别的日期或地点。';return;}
+    const avg=k=>sum[k]/sum.n;
+    const moon=j.daily.moon_illumination[0]; // 0~1
+
+    // 动态权重
+    const F=[
+      {k:'cloud', label:'云量',   val:avg('cloud').toFixed(0)+'%', score:fCloud(avg('cloud')), w:45},
+      {k:'precip',label:'降水概率',val:avg('precip').toFixed(0)+'%', score:fPrecip(avg('precip')), w:15},
+      {k:'hum',   label:'湿度',   val:avg('hum').toFixed(0)+'%',   score:fHum(avg('hum')),     w:15},
+      {k:'wind',  label:'风速',   val:avg('wind').toFixed(0)+'km/h',score:fWind(avg('wind')),  w:10},
+      {k:'moon',  label:'月光干扰',val:(moon*100).toFixed(0)+'%',  score:fMoon(moon),          w:10},
+      {k:'bortle',label:'光污染', val:'Bortle '+bortle,          score:fBortle(bortle),       w:5},
+    ];
+    if(seeing>0){F.push({k:'see',label:'视宁度',val:seeing+'″',score:fSeeing(seeing),w:10});
+      // 分 10% 给视宁度：从云量扣
+      F.find(x=>x.k==='cloud').w=35;}
+
+    const totW=F.reduce((s,x)=>s+x.w,0);
+    const total=F.reduce((s,x)=>s+x.w*x.score,0)/totW;
+
+    // 渲染
+    const cat=total>=75?['非常适合 🌟','var(--good)']:total>=60?['适合 🙂','var(--accent)']:
+              total>=45?['一般 🌥','var(--mid)']:['不太适合 ☁️','var(--bad)'];
+    document.getElementById('scoreNum').textContent=Math.round(total);
+    document.getElementById('scoreNum').style.color=cat[1];
+    const cEl=document.getElementById('scoreCat');cEl.textContent=cat[0];cEl.style.color=cat[1];
+    const now=new Date();
+    const inNight=now>=setA&&now<=riseA;
+    document.getElementById('scoreBest').textContent=
+      (inNight?'当前正处于黑夜中 · ':'')+'整夜最佳时段：'+fmt(best.time)+'（该小时综合 '+Math.round(best.score)+' 分）';
+
+    const fc=document.getElementById('factors');fc.innerHTML='';
+    F.forEach(x=>{
+      const col=x.score>=70?'var(--good)':x.score>=45?'var(--mid)':'var(--bad)';
+      fc.insertAdjacentHTML('beforeend',
+        `<div class="factor"><div class="top"><span>${x.label}</span><span style="color:${col};font-weight:700">${Math.round(x.score)}</span></div>`+
+        `<div class="val">${x.val}</div><div class="bar"><i style="width:${x.score}%;background:${col}"></i></div></div>`);
+    });
+
+    const rs=document.getElementById('reasons');rs.innerHTML='';
+    const tips=[];
+    const find=k=>F.find(x=>x.k===k).score;
+    if(find('cloud')<60) tips.push('云量偏高（'+avg('cloud').toFixed(0)+'%），星空会被遮挡，等放晴。');
+    if(find('precip')<60) tips.push('有降水概率（'+avg('precip').toFixed(0)+'%），注意天气变化。');
+    if(find('hum')<60) tips.push('湿度偏大（'+avg('hum').toFixed(0)+'%），镜片易结露，备好除雾带。');
+    if(find('wind')<60) tips.push('风偏大（'+avg('wind').toFixed(0)+'km/h），长曝星点可能拉线，加固脚架。');
+    if(find('moon')<60) tips.push('月光较强（'+(moon*100).toFixed(0)+'%），银河会被压暗，适合拍月亮/行星。');
+    if(find('bortle')<60) tips.push('光污染偏重（Bortle '+bortle+'），城市天际线明显，往暗处走。');
+    if(seeing>0&&find('see')<60) tips.push('视宁度一般（'+seeing+'″），行星/深空细节会发虚。');
+    if(!tips.length) tips.push('各项条件都不错，今晚值得架上相机。');
+    tips.forEach(t=>rs.insertAdjacentHTML('beforeend','<li>'+t+'</li>'));
+
+    meta.textContent='数据时间：'+fmt(now)+' · 黑夜窗口 '+fmt(setA)+' → '+fmt(riseA)+
+      ' · 月相 '+(j.daily.moon_phase[0]||'—')+' · 夜均气温 '+avg('temp').toFixed(0)+'°C';
+    R.style.display='block';
+  }catch(e){
+    meta.textContent='';document.getElementById('result').style.display='block';
+    document.getElementById('meta').innerHTML='<span class="err">拉取数据失败：'+e.message+
+      '。请检查网络（Open-Meteo 需要联网）。</span>';
+  }
+}
+function fmt(d){return d.getMonth()+1+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+document.getElementById('go').onclick=evaluate;
+document.getElementById('bortle').oninput=e=>document.getElementById('bortleVal').textContent=e.target.value+'（'+['',
+  '最黑荒野','真正暗夜','乡村夜空','郊外天空','城郊过渡','城市边缘','城中亮度','市中心','市中心核心'][e.target.value]+'）';
+document.getElementById('seeing').oninput=e=>document.getElementById('seeingVal').textContent=e.target.value>0?e.target.value+'″':'(自动估算)';
+</script>
+</body>
+</html>
