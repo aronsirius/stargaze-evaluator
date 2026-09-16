@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
@@ -167,6 +167,10 @@ const fWind  =w=>w<=10?100:clamp(100-(w-10)*3,0,100);
 const fMoon  =m=>clamp(100-m*70,0,100);            // m: 0~1
 const fBortle=b=>clamp(100-(b-1)*11,0,100);
 const fSeeing=s=>clamp(100-(s-1)*15,0,100);        // s: 角秒
+function moonPhaseName(p){
+  const n=['新月','蛾眉月','上弦月','盈凸月','满月','亏凸月','下弦月','残月'];
+  return n[Math.round(p*8)%8];
+}
 
 // ---------- 主流程 ----------
 async function evaluate(){
@@ -181,14 +185,19 @@ async function evaluate(){
     const wx=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
       `&hourly=cloud_cover,relative_humidity_2m,wind_speed_10m,precipitation_probability,temperature_2m`+
       `&forecast_days=2&timezone=auto`;
-    const as=`https://api.open-meteo.com/v1/astronomy?latitude=${lat}&longitude=${lon}`+
-      `&daily=sunrise_astronomical,sunset_astronomical,sunrise,sunset,moon_illumination,moon_phase`+
-      `&forecast_days=2&timezone=auto`;
-    const [w,j]=await Promise.all([fetch(wx).then(r=>r.json()),fetch(as).then(r=>r.json())]);
+    const w=await fetch(wx).then(r=>r.json());
+    if(!w.hourly) throw new Error('天气接口返回异常（可能坐标无效或网络受限）');
 
-    // 黑夜窗口：今晚日落天文时刻 ~ 明早日出天文时刻
-    const setA=new Date(j.daily.sunset_astronomical[0]);
-    const riseA=new Date(j.daily.sunrise_astronomical[1]);
+    // 天文黑夜窗口：用本地内联的 SunCalc 算法计算，不依赖任何外部天文接口
+    const today=new Date();
+    const yesterday=new Date(today.getTime()-86400000);
+    const tomorrow=new Date(today.getTime()+86400000);
+    const tY=SunCalc.getTimes(yesterday,lat,lon);
+    const tT=SunCalc.getTimes(today,lat,lon);
+    const tMo=SunCalc.getTimes(tomorrow,lat,lon);
+    let setA,riseA;
+    if(today>=tY.night && today<=tT.nightEnd){ setA=tY.night; riseA=tT.nightEnd; } // 当前正处于昨夜
+    else { setA=tT.night; riseA=tMo.nightEnd; } // 今晚~明早
     const tArr=w.hourly.time.map(t=>new Date(t));
     let sum={cloud:0,precip:0,hum:0,wind:0,temp:0,n:0};
     let best={score:-1,time:null};
@@ -203,7 +212,9 @@ async function evaluate(){
     }
     if(sum.n===0){meta.textContent='今夜无天文黑夜时段（高纬度夏季可能极昼），试试别的日期或地点。';return;}
     const avg=k=>sum[k]/sum.n;
-    const moon=j.daily.moon_illumination[0]; // 0~1
+    const moonInfo=SunCalc.getMoonIllumination(today);
+    const moon=moonInfo.fraction;      // 0~1 月亮被照亮比例
+    const moonPh=moonInfo.phase;       // 0~1 月相
 
     // 动态权重
     const F=[
@@ -254,7 +265,7 @@ async function evaluate(){
     tips.forEach(t=>rs.insertAdjacentHTML('beforeend','<li>'+t+'</li>'));
 
     meta.textContent='数据时间：'+fmt(now)+' · 黑夜窗口 '+fmt(setA)+' → '+fmt(riseA)+
-      ' · 月相 '+(j.daily.moon_phase[0]||'—')+' · 夜均气温 '+avg('temp').toFixed(0)+'°C';
+      ' · 月相 '+moonPhaseName(moonPh)+' · 夜均气温 '+avg('temp').toFixed(0)+'°C';
     R.style.display='block';
   }catch(e){
     meta.textContent='';document.getElementById('result').style.display='block';
