@@ -74,6 +74,8 @@
         <div><label>纬度 Latitude</label><input id="lat" type="number" step="0.0001" value="40.4319" /></div>
         <div><label>经度 Longitude</label><input id="lon" type="number" step="0.0001" value="116.3869" /></div>
       </div>
+      <button id="locate" class="ghost" style="margin-top:10px">📍 定位我的位置</button>
+      <div class="note">定位需在 https 或 localhost 下打开（直接双击 file:// 通常不让定位）。</div>
       <label>地点名称（可选，用于保存）</label>
       <input id="locName" type="text" placeholder="如：金山岭长城" />
 
@@ -473,6 +475,29 @@ document.getElementById('save').onclick=()=>{
   const lat=+document.getElementById('lat').value, lon=+document.getElementById('lon').value;
   if(!lat||!lon){alert('先填经纬度');return;}
   const a=loadSpots();a.push({name,lat,lon});saveSpots(a);renderChips();
+};
+
+// ---------- 定位我的位置 ----------
+document.getElementById('locate').onclick=()=>{
+  const btn=document.getElementById('locate');
+  if(!navigator.geolocation){alert('抱歉，当前浏览器不支持地理定位');return;}
+  btn.disabled=true; btn.textContent='📍 定位中…';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      document.getElementById('lat').value=pos.coords.latitude.toFixed(4);
+      document.getElementById('lon').value=pos.coords.longitude.toFixed(4);
+      document.getElementById('locName').value='我的位置';
+      btn.disabled=false; btn.textContent='📍 定位我的位置';
+    },
+    err=>{
+      btn.disabled=false; btn.textContent='📍 定位我的位置';
+      const msg = err.code===1 ? '定位被拒绝：请在浏览器中允许定位权限（且需在 https 或 localhost 下打开）'
+                 : err.code===2 ? '定位失败：无法获取位置（检查网络或 GPS 信号）'
+                 : '定位超时，请重试';
+      alert(msg);
+    },
+    {enableHighAccuracy:true, timeout:10000, maximumAge:0}
+  );
 };
 
 // ---------- 评分函数 ----------
