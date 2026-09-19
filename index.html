@@ -58,6 +58,8 @@
   .note{font-size:11px;color:#6f7ea3;margin-top:10px;line-height:1.5}
   .stars{position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.5}
 </style>
+<script>window._TMapSecurityConfig={serviceHost:'http://127.0.0.1:__WB_HTTP_PORT__/_TMapService/_wbt/__WB_TMAP_SECRET__'};</script>
+<script src="https://map.qq.com/api/gljs?v=1.exp"></script>
 </head>
 <body>
 <canvas class="stars" id="stars"></canvas>
@@ -111,6 +113,22 @@
       <div class="note" id="meta"></div>
     </section>
   </div>
+
+  <section class="card" style="margin-top:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <h2 style="font-size:16px;margin:0;color:var(--accent);letter-spacing:.06em">🌍 实时云图 · 视宁度参考</h2>
+      <div style="display:flex;gap:8px">
+        <button id="locateMap" class="ghost" style="width:auto;margin:0;padding:8px 12px;font-size:13px">📍 标到输入坐标</button>
+        <button id="refreshCloud" style="width:auto;margin:0;padding:8px 12px;font-size:13px">🔄 更新云图</button>
+      </div>
+    </div>
+    <div id="map" style="width:100%;height:420px;border-radius:10px;overflow:hidden;margin-top:12px;background:#0c1322"></div>
+    <div class="note" style="margin-top:10px">
+      图例：亮白／灰白＝云层（越白云越多），深暗＝晴。云量叠加层来自 <b>NASA GIBS</b> 的全球卫星真彩影像（免费、纯卫星影像、不含任何国界数据）；
+      底图为腾讯地图（合规）。拖拽缩放看全国／周边实时云系走向，拍星前先确认头顶是晴是云。<br>
+      ⚠️ 地图组件需联网、且在 <b>WorkBuddy 预览</b>中打开才会加载（走腾讯地图零 key 代理）；若你把本页部署到 GitHub Pages 或自己浏览器直接打开，需换成自己的腾讯地图 key（我可以一步帮你切）。
+    </div>
+  </section>
 
   <p class="note">
     评分逻辑（可改）：云量45% · 降水15% · 湿度15% · 风速10% · 月光10% · 光污染5%（填入视宁度时再分10%给它）。
@@ -620,6 +638,39 @@ document.getElementById('go').onclick=evaluate;
 document.getElementById('bortle').oninput=e=>document.getElementById('bortleVal').textContent=e.target.value+'（'+['',
   '最黑荒野','真正暗夜','乡村夜空','郊外天空','城郊过渡','城市边缘','城中亮度','市中心','市中心核心'][e.target.value]+'）';
 document.getElementById('seeing').oninput=e=>document.getElementById('seeingVal').textContent=e.target.value>0?e.target.value+'″':'(自动估算)';
+
+// ---------- 云图地图（腾讯合规底图 + NASA GIBS 卫星真彩云量叠加） ----------
+function _skyCloudDate(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function _skyGibTile(x,y,z){const yTMS=(1<<z)-1-y;return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${_skyCloudDate()}/GoogleMapsCompatible_Level9/${z}/${yTMS}/${x}.jpg`;}
+function _skyLat(){return parseFloat(document.getElementById('lat').value)||40.4319;}
+function _skyLon(){return parseFloat(document.getElementById('lon').value)||116.3869;}
+function initCloudMap(){
+  const el=document.getElementById('map');
+  const cfg=(window._TMapSecurityConfig&&window._TMapSecurityConfig.serviceHost)||'';
+  if(typeof TMap==='undefined' || cfg.indexOf('__WB')>=0){
+    el.innerHTML='<div style="padding:24px;color:#9fb0d0;line-height:1.7">地图组件未能加载（当前环境未配置腾讯地图 key）。<br>在 <b>WorkBuddy 预览</b>中打开即可零 key 使用；若要自行部署，请配置你自己的腾讯地图 key（我可以一步帮你切）。</div>';
+    return;
+  }
+  const map=new TMap.Map('map',{center:new TMap.LatLng(_skyLat(),_skyLon()),zoom:5});
+  window._skyMap=map;
+  const marker=new TMap.MultiMarker({map,geometries:[{id:'site',position:new TMap.LatLng(_skyLat(),_skyLon())}]});
+  window._skyMarker=marker;
+  _skyLoadCloud(map);
+  document.getElementById('locateMap').onclick=()=>{
+    if(window._skyMap) window._skyMap.setCenter(new TMap.LatLng(_skyLat(),_skyLon()));
+    if(window._skyMarker) window._skyMarker.setGeometries([{id:'site',position:new TMap.LatLng(_skyLat(),_skyLon())}]);
+  };
+  document.getElementById('refreshCloud').onclick=()=>{ if(window._skyMap) _skyLoadCloud(window._skyMap); };
+}
+function _skyLoadCloud(map){
+  if(typeof TMap==='undefined') return;
+  try{ if(window._cloudLayer) window._cloudLayer.setMap(null); }catch(e){}
+  window._cloudLayer=new TMap.ImageTileLayer({
+    getTileUrl:(x,y,z)=>_skyGibTile(x,y,z),
+    tileSize:256, minZoom:1, maxZoom:9, visible:true, zIndex:5000, opacity:0.8, map
+  });
+}
+initCloudMap();
 </script>
 </body>
 </html>
