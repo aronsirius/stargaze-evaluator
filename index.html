@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
@@ -123,6 +123,7 @@
       </div>
     </div>
     <div id="map" style="width:100%;height:420px;border-radius:10px;overflow:hidden;margin-top:12px;background:#0c1322"></div>
+    <div id="mapStatus" style="display:none;margin-top:8px;font-size:12px;line-height:1.5"></div>
     <div class="note" style="margin-top:10px">
       图例：亮白／灰白＝云层（越白云越多），深暗＝晴。云量叠加层来自 <b>NASA GIBS</b> 的全球卫星真彩影像（免费、纯卫星影像、不含任何国界数据）；
       底图为腾讯地图（合规）。拖拽缩放看全国／周边实时云系走向，拍星前先确认头顶是晴是云。<br>
@@ -644,30 +645,38 @@ function _skyCloudDate(){const d=new Date();return d.getFullYear()+'-'+String(d.
 function _skyGibTile(x,y,z){const yTMS=(1<<z)-1-y;return `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${_skyCloudDate()}/GoogleMapsCompatible_Level9/${z}/${yTMS}/${x}.jpg`;}
 function _skyLat(){return parseFloat(document.getElementById('lat').value)||40.4319;}
 function _skyLon(){return parseFloat(document.getElementById('lon').value)||116.3869;}
+function _skyStatus(msg,ok){const el=document.getElementById('mapStatus');if(el){el.style.display='block';el.style.color=ok?'#7ee0a0':'#f3a6a6';el.textContent=msg;}}
 function initCloudMap(){
   const el=document.getElementById('map');
-  const cfg=(window._TMapSecurityConfig&&window._TMapSecurityConfig.serviceHost)||'';
-  if(typeof TMap==='undefined' || cfg.indexOf('__WB')>=0){
-    el.innerHTML='<div style="padding:24px;color:#9fb0d0;line-height:1.7">地图组件未能加载（当前环境未配置腾讯地图 key）。<br>在 <b>WorkBuddy 预览</b>中打开即可零 key 使用；若要自行部署，请配置你自己的腾讯地图 key（我可以一步帮你切）。</div>';
+  if(typeof TMap==='undefined'){
+    el.innerHTML='<div style="padding:22px;color:#f3a6a6;line-height:1.7">⚠️ 腾讯地图 SDK 未加载。<br>常见原因：① 当前网络无法访问 map.qq.com；② 未在 WorkBuddy 预览中打开（零 key 代理未注入）。<br>若要把本页部署 / 自托管，需要配置自有腾讯地图 key（我可以一步帮你切）。</div>';
     return;
   }
-  const map=new TMap.Map('map',{center:new TMap.LatLng(_skyLat(),_skyLon()),zoom:5});
-  window._skyMap=map;
-  const marker=new TMap.MultiMarker({map,geometries:[{id:'site',position:new TMap.LatLng(_skyLat(),_skyLon())}]});
-  window._skyMarker=marker;
-  _skyLoadCloud(map);
-  document.getElementById('locateMap').onclick=()=>{
-    if(window._skyMap) window._skyMap.setCenter(new TMap.LatLng(_skyLat(),_skyLon()));
-    if(window._skyMarker) window._skyMarker.setGeometries([{id:'site',position:new TMap.LatLng(_skyLat(),_skyLon())}]);
-  };
-  document.getElementById('refreshCloud').onclick=()=>{ if(window._skyMap) _skyLoadCloud(window._skyMap); };
+  try{
+    const center=new TMap.LatLng(_skyLat(),_skyLon());
+    const map=new TMap.Map('map',{center:center,zoom:5});
+    window._skyMap=map;
+    window._skyMarker=new TMap.MultiMarker({map:map,geometries:[{id:'site',position:center}]});
+    try{ _skyLoadCloud(map); _skyStatus('✓ 底图已加载，NASA 卫星云图叠加完成（白色＝云，深暗＝晴）',true); }
+    catch(e){ _skyStatus('✓ 底图已加载（云图层加载失败：'+String(e&&e.message||e)+'）',false); }
+    document.getElementById('locateMap').onclick=function(){
+      const c=new TMap.LatLng(_skyLat(),_skyLon());
+      window._skyMap.setCenter(c);
+      window._skyMarker.setGeometries([{id:'site',position:c}]);
+    };
+    document.getElementById('refreshCloud').onclick=function(){
+      if(window._skyMap){ try{ _skyLoadCloud(window._skyMap); _skyStatus('✓ 云图已更新',true); }catch(e){ _skyStatus('云图更新失败：'+String(e&&e.message||e),false); } }
+    };
+  }catch(err){
+    el.innerHTML='<div style="padding:22px;color:#f3a6a6;line-height:1.7">⚠️ 地图初始化失败：<br><code style="font-size:12px">'+String(err&&err.message||err)+'</code><br>多半是预览环境未注入腾讯地图 key 代理。如需稳定显示，我可以帮你换成自有 key。</div>';
+  }
 }
 function _skyLoadCloud(map){
-  if(typeof TMap==='undefined') return;
+  if(typeof TMap==='undefined'||!map) return;
   try{ if(window._cloudLayer) window._cloudLayer.setMap(null); }catch(e){}
   window._cloudLayer=new TMap.ImageTileLayer({
-    getTileUrl:(x,y,z)=>_skyGibTile(x,y,z),
-    tileSize:256, minZoom:1, maxZoom:9, visible:true, zIndex:5000, opacity:0.8, map
+    getTileUrl:function(x,y,z){return _skyGibTile(x,y,z);},
+    tileSize:256, minZoom:1, maxZoom:9, visible:true, zIndex:5000, opacity:0.8, isMainThreadLoaded:true, map:map
   });
 }
 initCloudMap();
