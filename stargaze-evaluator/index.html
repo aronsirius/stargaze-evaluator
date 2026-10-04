@@ -1,0 +1,648 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>观星适宜度评估器 · 天狼星出品</title>
+<style>
+  :root{
+    --bg:#0a0e1a; --bg2:#111827; --card:#161e2e; --line:#26304a;
+    --txt:#e6ecff; --sub:#9fb0d0; --accent:#7aa2ff; --good:#4ade80;
+    --mid:#facc15; --bad:#f87171; --star:#cfe0ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 70% -10%,#1b2746 0%,var(--bg) 55%);
+    color:var(--txt);font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.6}
+  .wrap{max-width:920px;margin:0 auto;padding:28px 18px 60px}
+  header h1{font-size:24px;margin:0 0 4px;letter-spacing:1px}
+  header p{margin:0;color:var(--sub);font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}
+  @media(max-width:720px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  label{display:block;font-size:12px;color:var(--sub);margin:10px 0 4px}
+  input[type=number],input[type=text]{width:100%;background:var(--bg2);border:1px solid var(--line);
+    color:var(--txt);border-radius:9px;padding:9px 11px;font-size:14px}
+  input:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:10px}
+  .row>div{flex:1}
+  button{margin-top:14px;width:100%;background:linear-gradient(180deg,#7aa2ff,#5b82f0);
+    color:#06122e;border:none;border-radius:10px;padding:11px;font-size:15px;font-weight:700;
+    cursor:pointer;letter-spacing:1px}
+  button:active{transform:translateY(1px)}
+  .ghost{background:transparent;border:1px solid var(--line);color:var(--sub);font-weight:500}
+  .slabel{display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-top:12px}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .saved{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}
+  .saved h3{font-size:12px;color:var(--sub);margin:0 0 8px;font-weight:500}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--line);
+    border-radius:20px;padding:5px 10px;margin:0 6px 6px 0;font-size:12px;cursor:pointer}
+  .chip b{color:var(--accent)}
+  .chip .x{color:var(--bad);font-weight:700}
+  /* result */
+  #result{display:none}
+  .score{text-align:center;padding:8px 0 4px}
+  .score .num{font-size:64px;font-weight:800;line-height:1}
+  .score .cat{font-size:18px;font-weight:700;margin-top:6px}
+  .score .best{color:var(--sub);font-size:13px;margin-top:4px}
+  .factors{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:560px){.factors{grid-template-columns:1fr}}
+  .factor{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .factor .top{display:flex;justify-content:space-between;font-size:13px}
+  .factor .val{color:var(--sub);font-size:12px}
+  .bar{height:7px;background:#0c1322;border-radius:5px;margin-top:8px;overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:5px}
+  .reasons{margin-top:14px}
+  .reasons h3{font-size:13px;color:var(--sub);font-weight:500;margin:0 0 6px}
+  .reasons li{font-size:13px;margin:3px 0;color:var(--star)}
+  .err{color:var(--bad);font-size:13px;margin-top:10px}
+  .note{font-size:11px;color:#6f7ea3;margin-top:10px;line-height:1.5}
+  .tabs{display:flex;gap:8px;margin-bottom:12px}
+  .tab{flex:1;margin-top:0;background:var(--bg2);border:1px solid var(--line);color:var(--sub);
+    font-weight:500;padding:9px;font-size:14px;letter-spacing:0}
+  .tab.active{background:linear-gradient(180deg,#7aa2ff,#5b82f0);color:#06122e;border-color:transparent}
+  .resnight .score{padding:8px 0 4px}
+  .resnight .best{color:var(--sub);font-size:13px;margin-top:4px}
+  .stars{position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.5}
+</style>
+</head>
+<body>
+<canvas class="stars" id="stars"></canvas>
+<div class="wrap">
+  <header>
+    <h1>✦ 观星适宜度评估器</h1>
+    <p>天狼星为你打造 · 输入坐标，算未来两天适不适合拍星 · 天气 Open-Meteo + 天文本地算法 + 光污染天文通核对</p>
+  </header>
+
+  <div class="grid">
+    <!-- 输入区 -->
+    <section class="card">
+      <div class="row">
+        <div><label>纬度 Latitude</label><input id="lat" type="number" step="0.0001" value="40.4319" /></div>
+        <div><label>经度 Longitude</label><input id="lon" type="number" step="0.0001" value="116.3869" /></div>
+      </div>
+      <button id="locate" class="ghost" style="margin-top:10px">📍 定位我的位置</button>
+      <div class="note">定位需在 https 或 localhost 下打开（直接双击 file:// 通常不让定位）。</div>
+      <label>地点名称（可选，用于保存）</label>
+      <input id="locName" type="text" placeholder="如：金山岭长城" />
+
+      <div class="slabel"><span>光污染 Bortle 等级</span><span id="bortleVal">4（郊外天空）</span></div>
+      <input id="bortle" type="range" min="1" max="9" step="1" value="4" />
+      <div class="note">Bortle 1=最黑，9=市中心。暂无稳定自动接口（免费源对中国坐标不准/无 API），点下方按钮在天文通查卫星实测值，或手动填。</div>
+      <button id="checkLP" class="ghost" style="margin-top:8px;font-size:13px">🔗 在天文通查此点真实 Bortle（卫星数据）</button>
+
+      <div class="slabel"><span>视宁度 Seeing（可选，角秒）</span><span id="seeingVal">自动估算</span></div>
+      <input id="seeing" type="range" min="0" max="8" step="0.5" value="0" />
+      <div class="note">留 0 = 不计入评分（免费实时视宁度数据少）。知道就填：1″极佳，3″良好，>5″差。</div>
+
+      <button id="go">评 估 今 晚</button>
+      <button id="save" class="ghost">＋ 保存当前地点</button>
+
+      <div class="saved">
+        <h3>已保存地点（点一下直接评估）</h3>
+        <div id="chips"></div>
+      </div>
+    </section>
+
+    <!-- 结果区 -->
+    <section class="card" id="result" style="display:none">
+      <div class="tabs">
+        <button class="tab active" data-i="0">今晚</button>
+        <button class="tab" data-i="1">明晚</button>
+      </div>
+      <div class="resnight" id="res0"></div>
+      <div class="resnight" id="res1" style="display:none"></div>
+    </section>
+  </div>
+
+  <p class="note">
+    评分逻辑（可改）：云量45% · 降水15% · 湿度15% · 风速10% · 月光10% · 光污染5%（填入视宁度时再分10%给它）。
+    各项 0–100 分加权得出总分，>=75非常适合 / 60–74适合 / 45–59一般 / <45不适合。
+    月光项按"拍银河"标准算（满月会压暗银河）；若你拍行星/月亮可忽略该项。
+  </p>
+</div>
+
+<script>
+/*
+ (c) 2011-2015, Vladimir Agafonkin
+ SunCalc is a JavaScript library for calculating sun/moon position and light phases.
+ https://github.com/mourner/suncalc
+*/
+
+(function () { 'use strict';
+
+// shortcuts for easier to read formulas
+
+var PI   = Math.PI,
+    sin  = Math.sin,
+    cos  = Math.cos,
+    tan  = Math.tan,
+    asin = Math.asin,
+    atan = Math.atan2,
+    acos = Math.acos,
+    rad  = PI / 180;
+
+// sun calculations are based on http://aa.quae.nl/en/reken/zonpositie.html formulas
+
+
+// date/time constants and conversions
+
+var dayMs = 1000 * 60 * 60 * 24,
+    J1970 = 2440588,
+    J2000 = 2451545;
+
+function toJulian(date) { return date.valueOf() / dayMs - 0.5 + J1970; }
+function fromJulian(j)  { return new Date((j + 0.5 - J1970) * dayMs); }
+function toDays(date)   { return toJulian(date) - J2000; }
+
+
+// general calculations for position
+
+var e = rad * 23.4397; // obliquity of the Earth
+
+function rightAscension(l, b) { return atan(sin(l) * cos(e) - tan(b) * sin(e), cos(l)); }
+function declination(l, b)    { return asin(sin(b) * cos(e) + cos(b) * sin(e) * sin(l)); }
+
+function azimuth(H, phi, dec)  { return atan(sin(H), cos(H) * sin(phi) - tan(dec) * cos(phi)); }
+function altitude(H, phi, dec) { return asin(sin(phi) * sin(dec) + cos(phi) * cos(dec) * cos(H)); }
+
+function siderealTime(d, lw) { return rad * (280.16 + 360.9856235 * d) - lw; }
+
+function astroRefraction(h) {
+    if (h < 0) // the following formula works for positive altitudes only.
+        h = 0; // if h = -0.08901179 a div/0 would occur.
+
+    // formula 16.4 of "Astronomical Algorithms" 2nd edition by Jean Meeus (Willmann-Bell, Richmond) 1998.
+    // 1.02 / tan(h + 10.26 / (h + 5.10)) h in degrees, result in arc minutes -> converted to rad:
+    return 0.0002967 / Math.tan(h + 0.00312536 / (h + 0.08901179));
+}
+
+// general sun calculations
+
+function solarMeanAnomaly(d) { return rad * (357.5291 + 0.98560028 * d); }
+
+function eclipticLongitude(M) {
+
+    var C = rad * (1.9148 * sin(M) + 0.02 * sin(2 * M) + 0.0003 * sin(3 * M)), // equation of center
+        P = rad * 102.9372; // perihelion of the Earth
+
+    return M + C + P + PI;
+}
+
+function sunCoords(d) {
+
+    var M = solarMeanAnomaly(d),
+        L = eclipticLongitude(M);
+
+    return {
+        dec: declination(L, 0),
+        ra: rightAscension(L, 0)
+    };
+}
+
+
+var SunCalc = {};
+
+
+// calculates sun position for a given date and latitude/longitude
+
+SunCalc.getPosition = function (date, lat, lng) {
+
+    var lw  = rad * -lng,
+        phi = rad * lat,
+        d   = toDays(date),
+
+        c  = sunCoords(d),
+        H  = siderealTime(d, lw) - c.ra;
+
+    return {
+        azimuth: azimuth(H, phi, c.dec),
+        altitude: altitude(H, phi, c.dec)
+    };
+};
+
+
+// sun times configuration (angle, morning name, evening name)
+
+var times = SunCalc.times = [
+    [-0.833, 'sunrise',       'sunset'      ],
+    [  -0.3, 'sunriseEnd',    'sunsetStart' ],
+    [    -6, 'dawn',          'dusk'        ],
+    [   -12, 'nauticalDawn',  'nauticalDusk'],
+    [   -18, 'nightEnd',      'night'       ],
+    [     6, 'goldenHourEnd', 'goldenHour'  ]
+];
+
+// adds a custom time to the times config
+
+SunCalc.addTime = function (angle, riseName, setName) {
+    times.push([angle, riseName, setName]);
+};
+
+
+// calculations for sun times
+
+var J0 = 0.0009;
+
+function julianCycle(d, lw) { return Math.round(d - J0 - lw / (2 * PI)); }
+
+function approxTransit(Ht, lw, n) { return J0 + (Ht + lw) / (2 * PI) + n; }
+function solarTransitJ(ds, M, L)  { return J2000 + ds + 0.0053 * sin(M) - 0.0069 * sin(2 * L); }
+
+function hourAngle(h, phi, d) { return acos((sin(h) - sin(phi) * sin(d)) / (cos(phi) * cos(d))); }
+function observerAngle(height) { return -2.076 * Math.sqrt(height) / 60; }
+
+// returns set time for the given sun altitude
+function getSetJ(h, lw, phi, dec, n, M, L) {
+
+    var w = hourAngle(h, phi, dec),
+        a = approxTransit(w, lw, n);
+    return solarTransitJ(a, M, L);
+}
+
+
+// calculates sun times for a given date, latitude/longitude, and, optionally,
+// the observer height (in meters) relative to the horizon
+
+SunCalc.getTimes = function (date, lat, lng, height) {
+
+    height = height || 0;
+
+    var lw = rad * -lng,
+        phi = rad * lat,
+
+        dh = observerAngle(height),
+
+        d = toDays(date),
+        n = julianCycle(d, lw),
+        ds = approxTransit(0, lw, n),
+
+        M = solarMeanAnomaly(ds),
+        L = eclipticLongitude(M),
+        dec = declination(L, 0),
+
+        Jnoon = solarTransitJ(ds, M, L),
+
+        i, len, time, h0, Jset, Jrise;
+
+
+    var result = {
+        solarNoon: fromJulian(Jnoon),
+        nadir: fromJulian(Jnoon - 0.5)
+    };
+
+    for (i = 0, len = times.length; i < len; i += 1) {
+        time = times[i];
+        h0 = (time[0] + dh) * rad;
+
+        Jset = getSetJ(h0, lw, phi, dec, n, M, L);
+        Jrise = Jnoon - (Jset - Jnoon);
+
+        result[time[1]] = fromJulian(Jrise);
+        result[time[2]] = fromJulian(Jset);
+    }
+
+    return result;
+};
+
+
+// moon calculations, based on http://aa.quae.nl/en/reken/hemelpositie.html formulas
+
+function moonCoords(d) { // geocentric ecliptic coordinates of the moon
+
+    var L = rad * (218.316 + 13.176396 * d), // ecliptic longitude
+        M = rad * (134.963 + 13.064993 * d), // mean anomaly
+        F = rad * (93.272 + 13.229350 * d),  // mean distance
+
+        l  = L + rad * 6.289 * sin(M), // longitude
+        b  = rad * 5.128 * sin(F),     // latitude
+        dt = 385001 - 20905 * cos(M);  // distance to the moon in km
+
+    return {
+        ra: rightAscension(l, b),
+        dec: declination(l, b),
+        dist: dt
+    };
+}
+
+SunCalc.getMoonPosition = function (date, lat, lng) {
+
+    var lw  = rad * -lng,
+        phi = rad * lat,
+        d   = toDays(date),
+
+        c = moonCoords(d),
+        H = siderealTime(d, lw) - c.ra,
+        h = altitude(H, phi, c.dec),
+        // formula 14.1 of "Astronomical Algorithms" 2nd edition by Jean Meeus (Willmann-Bell, Richmond) 1998.
+        pa = atan(sin(H), tan(phi) * cos(c.dec) - sin(c.dec) * cos(H));
+
+    h = h + astroRefraction(h); // altitude correction for refraction
+
+    return {
+        azimuth: azimuth(H, phi, c.dec),
+        altitude: h,
+        distance: c.dist,
+        parallacticAngle: pa
+    };
+};
+
+
+// calculations for illumination parameters of the moon,
+// based on http://idlastro.gsfc.nasa.gov/ftp/pro/astro/mphase.pro formulas and
+// Chapter 48 of "Astronomical Algorithms" 2nd edition by Jean Meeus (Willmann-Bell, Richmond) 1998.
+
+SunCalc.getMoonIllumination = function (date) {
+
+    var d = toDays(date || new Date()),
+        s = sunCoords(d),
+        m = moonCoords(d),
+
+        sdist = 149598000, // distance from Earth to Sun in km
+
+        phi = acos(sin(s.dec) * sin(m.dec) + cos(s.dec) * cos(m.dec) * cos(s.ra - m.ra)),
+        inc = atan(sdist * sin(phi), m.dist - sdist * cos(phi)),
+        angle = atan(cos(s.dec) * sin(s.ra - m.ra), sin(s.dec) * cos(m.dec) -
+                cos(s.dec) * sin(m.dec) * cos(s.ra - m.ra));
+
+    return {
+        fraction: (1 + cos(inc)) / 2,
+        phase: 0.5 + 0.5 * inc * (angle < 0 ? -1 : 1) / Math.PI,
+        angle: angle
+    };
+};
+
+
+function hoursLater(date, h) {
+    return new Date(date.valueOf() + h * dayMs / 24);
+}
+
+// calculations for moon rise/set times are based on http://www.stargazing.net/kepler/moonrise.html article
+
+SunCalc.getMoonTimes = function (date, lat, lng, inUTC) {
+    var t = new Date(date);
+    if (inUTC) t.setUTCHours(0, 0, 0, 0);
+    else t.setHours(0, 0, 0, 0);
+
+    var hc = 0.133 * rad,
+        h0 = SunCalc.getMoonPosition(t, lat, lng).altitude - hc,
+        h1, h2, rise, set, a, b, xe, ye, d, roots, x1, x2, dx;
+
+    // go in 2-hour chunks, each time seeing if a 3-point quadratic curve crosses zero (which means rise or set)
+    for (var i = 1; i <= 24; i += 2) {
+        h1 = SunCalc.getMoonPosition(hoursLater(t, i), lat, lng).altitude - hc;
+        h2 = SunCalc.getMoonPosition(hoursLater(t, i + 1), lat, lng).altitude - hc;
+
+        a = (h0 + h2) / 2 - h1;
+        b = (h2 - h0) / 2;
+        xe = -b / (2 * a);
+        ye = (a * xe + b) * xe + h1;
+        d = b * b - 4 * a * h1;
+        roots = 0;
+
+        if (d >= 0) {
+            dx = Math.sqrt(d) / (Math.abs(a) * 2);
+            x1 = xe - dx;
+            x2 = xe + dx;
+            if (Math.abs(x1) <= 1) roots++;
+            if (Math.abs(x2) <= 1) roots++;
+            if (x1 < -1) x1 = x2;
+        }
+
+        if (roots === 1) {
+            if (h0 < 0) rise = i + x1;
+            else set = i + x1;
+
+        } else if (roots === 2) {
+            rise = i + (ye < 0 ? x2 : x1);
+            set = i + (ye < 0 ? x1 : x2);
+        }
+
+        if (rise && set) break;
+
+        h0 = h2;
+    }
+
+    var result = {};
+
+    if (rise) result.rise = hoursLater(t, rise);
+    if (set) result.set = hoursLater(t, set);
+
+    if (!rise && !set) result[ye > 0 ? 'alwaysUp' : 'alwaysDown'] = true;
+
+    return result;
+};
+
+
+// export as Node module / AMD module / browser variable
+if (typeof exports === 'object' && typeof module !== 'undefined') module.exports = SunCalc;
+else if (typeof define === 'function' && define.amd) define(SunCalc);
+else window.SunCalc = SunCalc;
+
+}());
+// ---------- 背景星点 ----------
+(function(){
+  const c=document.getElementById('stars'),x=c.getContext('2d');
+  function rs(){c.width=innerWidth;c.height=innerHeight;draw();}
+  function draw(){
+    x.clearRect(0,0,c.width,c.height);
+    for(let i=0;i<140;i++){
+      const r=Math.random()*1.4+.2, a=Math.random()*.7+.2;
+      x.fillStyle='rgba(207,224,255,'+a+')';
+      x.beginPath();x.arc(Math.random()*c.width,Math.random()*c.height,r,0,7);x.fill();
+    }
+  }
+  addEventListener('resize',rs);rs();
+})();
+
+// ---------- 保存地点 ----------
+const KEY='stargaze_spots';
+function loadSpots(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+function saveSpots(a){localStorage.setItem(KEY,JSON.stringify(a))}
+function renderChips(){
+  const box=document.getElementById('chips');box.innerHTML='';
+  loadSpots().forEach((s,i)=>{
+    const el=document.createElement('span');el.className='chip';
+    el.innerHTML='<b>'+s.name+'</b> '+s.lat+','+s.lon+' <span class="x" data-i="'+i+'">✕</span>';
+    el.onclick=(e)=>{if(e.target.dataset.i!==undefined)return;
+      document.getElementById('lat').value=s.lat;document.getElementById('lon').value=s.lon;
+      document.getElementById('locName').value=s.name;evaluate();};
+    el.querySelector('.x').onclick=(e)=>{e.stopPropagation();
+      const a=loadSpots();a.splice(i,1);saveSpots(a);renderChips();};
+    box.appendChild(el);
+  });
+}
+renderChips();
+document.getElementById('save').onclick=()=>{
+  const name=document.getElementById('locName').value.trim()||'未命名';
+  const lat=+document.getElementById('lat').value, lon=+document.getElementById('lon').value;
+  if(!lat||!lon){alert('先填经纬度');return;}
+  const a=loadSpots();a.push({name,lat,lon});saveSpots(a);renderChips();
+};
+
+// ---------- 定位我的位置 ----------
+document.getElementById('locate').onclick=()=>{
+  const btn=document.getElementById('locate');
+  if(!navigator.geolocation){alert('抱歉，当前浏览器不支持地理定位');return;}
+  btn.disabled=true; btn.textContent='📍 定位中…';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      document.getElementById('lat').value=pos.coords.latitude.toFixed(4);
+      document.getElementById('lon').value=pos.coords.longitude.toFixed(4);
+      document.getElementById('locName').value='我的位置';
+      btn.disabled=false; btn.textContent='📍 定位我的位置';
+    },
+    err=>{
+      btn.disabled=false; btn.textContent='📍 定位我的位置';
+      const msg = err.code===1 ? '定位被拒绝：请在浏览器中允许定位权限（且需在 https 或 localhost 下打开）'
+                 : err.code===2 ? '定位失败：无法获取位置（检查网络或 GPS 信号）'
+                 : '定位超时，请重试';
+      alert(msg);
+    },
+    {enableHighAccuracy:true, timeout:10000, maximumAge:0}
+  );
+};
+
+// ---------- 评分函数 ----------
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fCloud =c=>clamp(100-c,0,100);
+const fPrecip=p=>clamp(100-p,0,100);
+const fHum   =h=>h<=60?100:clamp(100-(h-60)*2,0,100);
+const fWind  =w=>w<=10?100:clamp(100-(w-10)*3,0,100);
+const fMoon  =m=>clamp(100-m*70,0,100);            // m: 0~1
+const fBortle=b=>clamp(100-(b-1)*11,0,100);
+const fSeeing=s=>clamp(100-(s-1)*15,0,100);        // s: 角秒
+function moonPhaseName(p){
+  const n=['新月','蛾眉月','上弦月','盈凸月','满月','亏凸月','下弦月','残月'];
+  return n[Math.round(p*8)%8];
+}
+
+// ---------- 主流程 ----------
+function fmt(d){return d.getMonth()+1+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+
+// 评估单个夜晚窗口，返回该晚评分数据（无黑夜时段返回 null）
+function assessNight(setA, riseA, w, bortle, seeing, moon, moonPh, tArr){
+  const sum={cloud:0,precip:0,hum:0,wind:0,temp:0,n:0};
+  let best={score:-1,time:null};
+  for(let i=0;i<tArr.length;i++){
+    if(tArr[i]>=setA && tArr[i]<=riseA){
+      const c=w.hourly.cloud_cover[i],p=w.hourly.precipitation_probability[i],
+            h=w.hourly.relative_humidity_2m[i],wd=w.hourly.wind_speed_10m[i],tp=w.hourly.temperature_2m[i];
+      sum.cloud+=c;sum.precip+=p;sum.hum+=h;sum.wind+=wd;sum.temp+=tp;sum.n++;
+      const sc=(fCloud(c)+fPrecip(p)+fHum(h)+fWind(wd))/4;
+      if(sc>best.score){best.score=sc;best.time=tArr[i];}
+    }
+  }
+  if(sum.n===0) return null;
+  const avg=k=>sum[k]/sum.n;
+  const F=[
+    {k:'cloud', label:'云量',   val:avg('cloud').toFixed(0)+'%', score:fCloud(avg('cloud')), w:45},
+    {k:'precip',label:'降水概率',val:avg('precip').toFixed(0)+'%', score:fPrecip(avg('precip')), w:15},
+    {k:'hum',   label:'湿度',   val:avg('hum').toFixed(0)+'%',   score:fHum(avg('hum')),     w:15},
+    {k:'wind',  label:'风速',   val:avg('wind').toFixed(0)+'km/h',score:fWind(avg('wind')),  w:10},
+    {k:'moon',  label:'月光干扰',val:(moon*100).toFixed(0)+'%',  score:fMoon(moon),          w:10},
+    {k:'bortle',label:'光污染', val:'Bortle '+bortle,          score:fBortle(bortle),       w:5},
+  ];
+  if(seeing>0){F.push({k:'see',label:'视宁度',val:seeing+'″',score:fSeeing(seeing),w:10});
+    F.find(x=>x.k==='cloud').w=35;}
+  const totW=F.reduce((s,x)=>s+x.w,0);
+  const total=F.reduce((s,x)=>s+x.w*x.score,0)/totW;
+  const cat=total>=75?['非常适合 🌟','var(--good)']:total>=60?['适合 🙂','var(--accent)']:
+            total>=45?['一般 🌥','var(--mid)']:['不太适合 ☁️','var(--bad)'];
+  const tips=[];
+  const find=k=>F.find(x=>x.k===k).score;
+  if(find('cloud')<60) tips.push('云量偏高（'+avg('cloud').toFixed(0)+'%），星空会被遮挡，等放晴。');
+  if(find('precip')<60) tips.push('有降水概率（'+avg('precip').toFixed(0)+'%），注意天气变化。');
+  if(find('hum')<60) tips.push('湿度偏大（'+avg('hum').toFixed(0)+'%），镜片易结露，备好除雾带。');
+  if(find('wind')<60) tips.push('风偏大（'+avg('wind').toFixed(0)+'km/h），长曝星点可能拉线，加固脚架。');
+  if(find('moon')<60) tips.push('月光较强（'+(moon*100).toFixed(0)+'%），银河会被压暗，适合拍月亮/行星。');
+  if(find('bortle')<60) tips.push('光污染偏重（Bortle '+bortle+'），城市天际线明显，往暗处走。');
+  if(seeing>0&&find('see')<60) tips.push('视宁度一般（'+seeing+'″），行星/深空细节会发虚。');
+  if(!tips.length) tips.push('各项条件都不错，值得架上相机。');
+  return {total,cat,best,avg,F,tips,setA,riseA,moonPh};
+}
+
+// 把单晚数据渲染进容器
+function renderNight(container, d, now){
+  if(!d){container.innerHTML='<p class="note">该夜无天文黑夜时段（高纬度夏季可能极昼），或数据不足。</p>';return;}
+  const col=c=>c>=70?'var(--good)':c>=45?'var(--mid)':'var(--bad)';
+  const inNight=now>=d.setA&&now<=d.riseA;
+  container.innerHTML=
+    '<div class="score"><div class="num">'+Math.round(d.total)+'</div>'+
+    '<div class="cat" style="color:'+d.cat[1]+'">'+d.cat[0]+'</div>'+
+    '<div class="best">'+(inNight?'当前正处于黑夜中 · ':'')+'整夜最佳时段：'+fmt(d.best.time)+
+      '（该小时综合 '+Math.round(d.best.score)+' 分）</div></div>'+
+    '<div class="factors">'+d.F.map(x=>{
+      const c=col(x.score);
+      return '<div class="factor"><div class="top"><span>'+x.label+'</span><span style="color:'+c+';font-weight:700">'+Math.round(x.score)+'</span></div>'+
+        '<div class="val">'+x.val+'</div><div class="bar"><i style="width:'+x.score+'%;background:'+c+'"></i></div></div>';
+    }).join('')+'</div>'+
+    '<div class="reasons"><h3>关键提示</h3><ul>'+d.tips.map(t=>'<li>'+t+'</li>').join('')+'</ul></div>'+
+    '<div class="note">黑夜窗口 '+fmt(d.setA)+' → '+fmt(d.riseA)+
+      ' · 月相 '+moonPhaseName(d.moonPh)+' · 夜均气温 '+d.avg('temp').toFixed(0)+'°C</div>';
+}
+
+function showTab(i){
+  document.getElementById('res0').style.display=i===0?'block':'none';
+  document.getElementById('res1').style.display=i===1?'block':'none';
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',+t.dataset.i===i));
+}
+
+async function evaluate(){
+  const lat=+document.getElementById('lat').value, lon=+document.getElementById('lon').value;
+  if(!lat||!lon){alert('经纬度不能为空');return;}
+  const bortle=+document.getElementById('bortle').value;
+  const seeing=+document.getElementById('seeing').value;
+  const R=document.getElementById('result');
+  const res0=document.getElementById('res0'), res1=document.getElementById('res1');
+  R.style.display='none';res0.innerHTML='';res1.innerHTML='';
+  res0.innerHTML='<p class="note">查询中…</p>';
+
+  try{
+    const wx=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
+      `&hourly=cloud_cover,relative_humidity_2m,wind_speed_10m,precipitation_probability,temperature_2m`+
+      `&forecast_days=3&timezone=auto`;
+    const w=await fetch(wx).then(r=>r.json());
+    if(!w.hourly) throw new Error('天气接口返回异常（可能坐标无效或网络受限）');
+
+    // 天文黑夜窗口：本地 SunCalc 计算，不依赖外部天文接口
+    const today=new Date();
+    const yesterday=new Date(today.getTime()-86400000);
+    const tomorrow=new Date(today.getTime()+86400000);
+    const dayAfter=new Date(today.getTime()+2*86400000);
+    const tY=SunCalc.getTimes(yesterday,lat,lon);
+    const tT=SunCalc.getTimes(today,lat,lon);
+    const tMo=SunCalc.getTimes(tomorrow,lat,lon);
+    const tDa=SunCalc.getTimes(dayAfter,lat,lon);
+    let set0,rise0;
+    if(today>=tY.night && today<=tT.nightEnd){ set0=tY.night; rise0=tT.nightEnd; }
+    else { set0=tT.night; rise0=tMo.nightEnd; }       // 今晚~明早
+    const set1=tMo.night, rise1=tDa.nightEnd;          // 明晚~后天早
+
+    const tArr=w.hourly.time.map(t=>new Date(t));
+    const moonInfo=SunCalc.getMoonIllumination(today);
+    const moon=moonInfo.fraction, moonPh=moonInfo.phase;
+    const now=new Date();
+    const d0=assessNight(set0,rise0,w,bortle,seeing,moon,moonPh,tArr);
+    const d1=assessNight(set1,rise1,w,bortle,seeing,moon,moonPh,tArr);
+    renderNight(res0,d0,now);
+    renderNight(res1,d1,now);
+    R.style.display='block';showTab(0);
+  }catch(e){
+    res0.innerHTML='<p class="err">拉取数据失败：'+e.message+'。请检查网络（Open-Meteo 需要联网）。</p>';
+    R.style.display='block';
+  }
+}
+
+// ---------- 事件绑定 ----------
+document.getElementById('go').onclick=evaluate;
+document.getElementById('bortle').oninput=e=>document.getElementById('bortleVal').textContent=e.target.value+'（'+['',
+  '最黑荒野','真正暗夜','乡村夜空','郊外天空','城郊过渡','城市边缘','城中亮度','市中心','市中心核心'][e.target.value]+'）';
+document.getElementById('seeing').oninput=e=>document.getElementById('seeingVal').textContent=e.target.value>0?e.target.value+'″':'(自动估算)';
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>showTab(+t.dataset.i));
+document.getElementById('checkLP').onclick=()=>{
+  const lat=+document.getElementById('lat').value, lon=+document.getElementById('lon').value;
+  window.open('https://darkmap.cn/?lat='+lat+'&lng='+lon+'&zoom=8','_blank');
+};
+</script>
+</body>
+</html>
